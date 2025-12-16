@@ -1,0 +1,21 @@
+{
+  "sex": "female",
+  "age": 32,
+  "glucose": 112,
+  "hba1c": 5.9,
+  "ldl": 155,
+  "hdl": 38,
+  "triglycerides": 180,
+  "total_cholesterol": 220,
+  "hemoglobin": 11.6,
+  "hematocrit": 35.0,
+  "wbc": 12.2,
+  "platelets": 140,
+  "alt": 52,
+  "ast": 33,
+  "creatinine": 1.1,
+  "egfr": 58,
+  "crp": 8.3
+}
+
+

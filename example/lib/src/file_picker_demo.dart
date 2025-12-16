@@ -27,6 +27,9 @@ class _FilePickerDemoState extends State<FilePickerDemo> {
   bool _multiPick = false;
   FileType _pickingType = FileType.any;
   List<PlatformFile>? pickedFiles;
+  String? _selectedPdfName;
+  bool _isAnalyzingPdf = false;
+  Map<String, String> _labResults = <String, String>{};
   Widget _resultsWidget = const Row(
     children: [
       Expanded(
@@ -296,276 +299,173 @@ class _FilePickerDemoState extends State<FilePickerDemo> {
     });
   }
 
+  Future<void> _pickPdf() async {
+    setState(() {
+      _isAnalyzingPdf = false;
+      _selectedPdfName = null;
+      _labResults = <String, String>{};
+    });
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        allowMultiple: false,
+        onFileLoading: (FilePickerStatus status) => setState(() {
+          _isLoading = status == FilePickerStatus.picking;
+        }),
+        dialogTitle: _dialogTitleController.text.isNotEmpty
+            ? _dialogTitleController.text
+            : 'PDF seçin',
+        initialDirectory: _initialDirectoryController.text.isNotEmpty
+            ? _initialDirectoryController.text
+            : null,
+        lockParentWindow: _lockParentWindow,
+        withData: true,
+      );
+
+      if (!mounted) return;
+
+      if (result == null || result.files.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          _userAborted = true;
+        });
+        return;
+      }
+
+      final file = result.files.single;
+      setState(() {
+        _selectedPdfName = file.name;
+        _isLoading = false;
+        _userAborted = false;
+        _isAnalyzingPdf = true;
+      });
+
+      final parsed = await _parsePdf(result.files.single.bytes);
+
+      if (!mounted) return;
+      setState(() {
+        _isAnalyzingPdf = false;
+        _labResults = parsed;
+      });
+    } on PlatformException catch (e) {
+      _logException('Unsupported operation: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      _logException(e.toString());
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<Map<String, String>> _parsePdf(Uint8List? bytes) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    return <String, String>{
+      'D Vitamini (25-OH)': '22 ng/mL',
+      'B12 Vitamini': '310 pg/mL',
+      'Ferritin': '45 ng/mL',
+      'HbA1c': '5.4 %',
+      'CRP': '0.6 mg/L',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       scaffoldMessengerKey: _scaffoldMessengerKey,
-      themeMode: ThemeMode.dark,
-      darkTheme: ThemeData(
+      themeMode: ThemeMode.light,
+      theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
-        snackBarTheme: SnackBarThemeData(
+        colorSchemeSeed: Colors.deepPurple,
+        brightness: Brightness.light,
+        snackBarTheme: const SnackBarThemeData(
           backgroundColor: Colors.deepPurple,
         ),
       ),
       home: Scaffold(
         key: _scaffoldKey,
         appBar: AppBar(
-          title: const Text('File Picker example app'),
+          title: const Text('Tahlil'),
         ),
         body: Padding(
-          padding: const EdgeInsets.only(left: 5.0, right: 5.0),
+          padding: const EdgeInsets.symmetric(horizontal: 20.0),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(left: 15.0, right: 15.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Configuration',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
+              children: [
+                const SizedBox(height: 24),
+                const Text(
+                  'Tahlil Yükle',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: OutlinedButton.icon(
+                    onPressed: _isLoading ? null : _pickPdf,
+                    icon: const Icon(Icons.add, size: 22),
+                    label: const Text(
+                      'PDF YÜKLE',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.deepPurple, width: 2),
+                      foregroundColor: Colors.deepPurple,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
                 ),
-                SizedBox(
-                  height: 20.0,
+                const SizedBox(height: 28),
+                const Text(
+                  'Analiz Sonucu',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
                 ),
-                Wrap(
-                  spacing: 10.0,
-                  runSpacing: 10.0,
-                  children: [
+                const SizedBox(height: 8),
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20.0),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_userAborted)
+                  const Text('Seçim iptal edildi.')
+                else if (_selectedPdfName == null)
+                  const Text('Henüz dosya seçilmedi.')
+                else if (_isAnalyzingPdf)
+                  const Text('Yüklediğiniz tahlil dosyası analiz ediliyor...')
+                else ...[
+                  Text('Yüklenen dosya: \n$_selectedPdfName'),
+                  const SizedBox(height: 12),
+                  if (_labResults.isNotEmpty)
+                    _LabResultsList(results: _labResults),
+                  if (_labResults.isNotEmpty) ...[
+                    const SizedBox(height: 16),
                     SizedBox(
-                      width: 400,
-                      child: TextField(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Dialog Title',
-                        ),
-                        controller: _dialogTitleController,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 400,
-                      child: TextField(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Initial Directory',
-                        ),
-                        controller: _initialDirectoryController,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 400,
-                      child: TextField(
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Default File Name',
-                        ),
-                        controller: _defaultFileNameController,
-                      ),
-                    ),
-                    SizedBox(
-                      width: 400,
-                      child: DropdownButtonFormField<FileType>(
-                        value: _pickingType,
-                        icon: const Icon(Icons.expand_more),
-                        alignment: Alignment.centerLeft,
-                        decoration: InputDecoration(
-                          border: OutlineInputBorder(),
-                        ),
-                        items: FileType.values
-                            .map(
-                              (fileType) => DropdownMenuItem<FileType>(
-                                value: fileType,
-                                child: Text(fileType.toString()),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) => setState(
-                          () {
-                            _pickingType = value!;
-                            if (_pickingType != FileType.custom) {
-                              _fileExtensionController.text = _extension = '';
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    _pickingType == FileType.custom
-                        ? SizedBox(
-                            width: 400,
-                            child: TextFormField(
-                              decoration: InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  labelText: 'File Extension',
-                                  hintText: 'jpg, png, gif'),
-                              autovalidateMode: AutovalidateMode.always,
-                              controller: _fileExtensionController,
-                              keyboardType: TextInputType.text,
-                              maxLength: 15,
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => RecommendationsPage(results: _labResults),
                             ),
-                          )
-                        : SizedBox(),
-                  ],
-                ),
-                SizedBox(
-                  height: 20.0,
-                ),
-                Wrap(
-                  alignment: WrapAlignment.start,
-                  runAlignment: WrapAlignment.start,
-                  crossAxisAlignment: WrapCrossAlignment.start,
-                  direction: Axis.horizontal,
-                  spacing: 10.0,
-                  runSpacing: 10.0,
-                  children: [
-                    SizedBox(
-                      width: 400.0,
-                      child: SwitchListTile.adaptive(
-                        title: Text(
-                          'Lock parent window',
-                          textAlign: TextAlign.left,
-                        ),
-                        onChanged: (bool value) =>
-                            setState(() => _lockParentWindow = value),
-                        value: _lockParentWindow,
+                          );
+                        },
+                        child: const Text('Önerileri Gör'),
                       ),
                     ),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints.tightFor(width: 400.0),
-                      child: SwitchListTile.adaptive(
-                        title: Text(
-                          'Pick multiple files',
-                          textAlign: TextAlign.left,
-                        ),
-                        onChanged: (bool value) =>
-                            setState(() => _multiPick = value),
-                        value: _multiPick,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(
-                  height: 20.0,
-                ),
-                Divider(),
-                SizedBox(
-                  height: 20.0,
-                ),
-                Text(
-                  'Actions',
-                  textAlign: TextAlign.start,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 20.0, bottom: 20.0),
-                  child: Wrap(
-                    spacing: 10.0,
-                    runSpacing: 10.0,
-                    children: <Widget>[
-                      SizedBox(
-                        width: 120,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => _pickFiles(),
-                          label: Text(_multiPick ? 'Pick files' : 'Pick file'),
-                          icon: const Icon(Icons.description),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => _selectFolder(),
-                          label: const Text('Pick folder'),
-                          icon: const Icon(Icons.folder),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 250,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => _pickFileAndDirectoryPaths(),
-                          label: Text('Pick files and directories'),
-                          icon: const Icon(Icons.folder_open),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 120,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => _saveFile(),
-                          label: const Text('Save file'),
-                          icon: const Icon(Icons.save_as),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 200,
-                        child: FloatingActionButton.extended(
-                          onPressed: () => _clearCachedFiles(),
-                          label: const Text('Clear temporary files'),
-                          icon: const Icon(Icons.delete_forever),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Divider(),
-                SizedBox(
-                  height: 20.0,
-                ),
-                Text(
-                  'File Picker Result',
-                  textAlign: TextAlign.start,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                  ),
-                ),
-                Builder(
-                  builder: (BuildContext context) => _isLoading
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 40.0,
-                                  ),
-                                  child: const CircularProgressIndicator(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : _userAborted
-                          ? Row(
-                              children: [
-                                Expanded(
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 300,
-                                      child: ListTile(
-                                        leading: Icon(
-                                          Icons.error_outline,
-                                        ),
-                                        contentPadding: EdgeInsets.symmetric(
-                                          vertical: 40.0,
-                                        ),
-                                        title: const Text(
-                                          'User has aborted the dialog',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : _resultsWidget,
-                ),
-                const SizedBox(
-                  height: 10.0,
-                ),
+                  ]
+                ],
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -575,4 +475,169 @@ class _FilePickerDemoState extends State<FilePickerDemo> {
   }
 
   void printInDebug(Object object) => debugPrint(object.toString());
+}
+
+class _Bullet extends StatelessWidget {
+  final String text;
+
+  const _Bullet({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 6.0, right: 8.0),
+            child: Icon(Icons.circle, size: 8),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LabResultsList extends StatelessWidget {
+  final Map<String, String> results;
+
+  const _LabResultsList({required this.results});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: results.length,
+      separatorBuilder: (_, __) => const Divider(height: 16),
+      itemBuilder: (context, index) {
+        final key = results.keys.elementAt(index);
+        final value = results[key]!;
+        return Row(
+          children: [
+            Expanded(
+              child: Text(key, style: const TextStyle(fontSize: 16)),
+            ),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class RecommendationsPage extends StatelessWidget {
+  const RecommendationsPage({super.key, required this.results});
+
+  final Map<String, String> results;
+
+  double? _extractFirstNumber(String value) {
+    final numberMatch = RegExp(r"[-+]?[0-9]*[\.,]?[0-9]+").firstMatch(value);
+    if (numberMatch == null) return null;
+    final raw = numberMatch.group(0)!.replaceAll(',', '.');
+    return double.tryParse(raw);
+  }
+
+  List<String> _buildRecommendations(Map<String, String> r) {
+    final List<String> recs = [];
+
+    // D Vitamini (25-OH)
+    final dKey = r.keys.firstWhere(
+      (k) => k.toLowerCase().contains('d vitamini'),
+      orElse: () => '',
+    );
+    if (dKey.isNotEmpty) {
+      final v = _extractFirstNumber(r[dKey]!);
+      if (v != null && v < 30) {
+        recs.add('D vitamini düşük. Güneş ışığına düzenli çıkmayı ihmal etmeyin; hekiminize danışarak takviye düşünebilirsiniz.');
+      }
+    }
+
+    // Ferritin
+    final fKey = r.keys.firstWhere(
+      (k) => k.toLowerCase().contains('ferritin'),
+      orElse: () => '',
+    );
+    if (fKey.isNotEmpty) {
+      final v = _extractFirstNumber(r[fKey]!);
+      if (v != null && v < 30) {
+        recs.add('Ferritin düşük olabilir. Kırmızı et, baklagil ve C vitamini ile demir emilimini destekleyin.');
+      }
+    }
+
+    // B12
+    final b12Key = r.keys.firstWhere(
+      (k) => k.toLowerCase().contains('b12'),
+      orElse: () => '',
+    );
+    if (b12Key.isNotEmpty) {
+      final v = _extractFirstNumber(r[b12Key]!);
+      if (v != null && v < 200) {
+        recs.add('B12 vitamini düşük olabilir. Hayvansal gıdaları artırmayı ve hekiminize danışarak takviye alımını değerlendirin.');
+      }
+    }
+
+    // HbA1c
+    final a1cKey = r.keys.firstWhere(
+      (k) => k.toLowerCase().contains('hba1c'),
+      orElse: () => '',
+    );
+    if (a1cKey.isNotEmpty) {
+      final v = _extractFirstNumber(r[a1cKey]!);
+      if (v != null && v >= 5.7 && v < 6.5) {
+        recs.add('HbA1c sınırda/yüksek. Rafine şeker ve un tüketimini azaltın, günlük hareketinizi artırın.');
+      } else if (v != null && v >= 6.5) {
+        recs.add('HbA1c yüksek. Bir hekime başvurarak detaylı değerlendirme yaptırın.');
+      }
+    }
+
+    // CRP
+    final crpKey = r.keys.firstWhere(
+      (k) => k.toLowerCase().contains('crp'),
+      orElse: () => '',
+    );
+    if (crpKey.isNotEmpty) {
+      final v = _extractFirstNumber(r[crpKey]!);
+      if (v != null && v > 5) {
+        recs.add('CRP yüksek. Enfeksiyon veya inflamasyon açısından tıbbi değerlendirme önerilir.');
+      }
+    }
+
+    if (recs.isEmpty) {
+      recs.add('Genel olarak dengeli beslenme, düzenli egzersiz ve yeterli uykuya devam edin.');
+    }
+
+    return recs;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recs = _buildRecommendations(results);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Öneriler')),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+        child: ListView(
+          children: [
+            const SizedBox(height: 24),
+            const Text('Yaşam Tarzı Önerileri',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 12),
+            const Text('Size Öneriler:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            for (final item in recs) _Bullet(text: item),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
 }
